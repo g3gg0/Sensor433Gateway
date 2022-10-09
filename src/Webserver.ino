@@ -283,6 +283,7 @@ void handle_set_parm()
     strncpy(current_config.mqtt_user, webserver.arg("mqtt_user").c_str(), sizeof(current_config.mqtt_user));
     strncpy(current_config.mqtt_password, webserver.arg("mqtt_password").c_str(), sizeof(current_config.mqtt_password));
     strncpy(current_config.mqtt_client, webserver.arg("mqtt_client").c_str(), sizeof(current_config.mqtt_client));
+    strncpy(current_config.mqtt_filter, webserver.arg("mqtt_filter").c_str(), sizeof(current_config.mqtt_filter));
 
     cfg_save();
 
