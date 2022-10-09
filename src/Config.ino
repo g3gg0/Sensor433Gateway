@@ -29,8 +29,7 @@ void cfg_reset()
     memset(&current_config, 0x00, sizeof(current_config));
 
     current_config.magic = CONFIG_MAGIC;
-    strcpy(current_config.hostname, "Sensor433Gateway");
-    
+    strcpy(current_config.hostname, "RF433");
     strcpy(current_config.mqtt_server, "");
     current_config.mqtt_port = 11883;
     strcpy(current_config.mqtt_user, "");
@@ -39,8 +38,7 @@ void cfg_reset()
     strcpy(current_config.mqtt_filter, "");
     current_config.mqtt_publish = 0;
 
-    current_config.verbose = 7;
-    current_config.mqtt_publish = 0;
+    current_config.verbose = 0;
     
     strcpy(current_config.wifi_ssid, "(not set)");
     strcpy(current_config.wifi_password, "(not set)");
