@@ -28,11 +28,8 @@ void rcv_addreceived(const char *path, const char *json)
         /* entry with that path already found, just update json */
         if (!strcmp(it->first, path))
         {
-            //Serial.printf("update path: '%s'\n", it->first);
-            //Serial.printf("json old: '%s'\n", it->second);
             free(it->second);
             it->second = strdup(json);
-            //Serial.printf("json new: '%s'\n", it->second);
             return;
         }
     }
@@ -41,8 +38,6 @@ void rcv_addreceived(const char *path, const char *json)
     t_map_entry entry;
     entry.first = strdup(path);
     entry.second = strdup(json);
-    //Serial.printf("add path: '%s'\n", entry.first);
-    //Serial.printf("json: '%s'\n", entry.second);
     ReceiverLastReceived.push_back(entry);
 }
 
@@ -94,7 +89,6 @@ bool rcv_enabled(const char *path)
     char *fields = current_config.mqtt_filter;
     int pos = 0;
 
-    Serial.printf("Search for '%s'\n", path);
     while(fields[pos])
     {
         if(fields[pos] == ' ')
@@ -105,7 +99,6 @@ bool rcv_enabled(const char *path)
         {
             const char *cur_str = &fields[pos];
 
-            Serial.printf("  #%d '%s'\n", pos, cur_str);
             const char *end = strchr(cur_str, ' ');
             int length = strlen(cur_str);
             
@@ -116,7 +109,6 @@ bool rcv_enabled(const char *path)
 
             if(!strncmp(cur_str, path, length))
             {
-                Serial.printf("  Match!\n");
                 return true;
             }
 
@@ -124,7 +116,6 @@ bool rcv_enabled(const char *path)
         }
     }
 
-    Serial.printf("No match!\n");
     return false;
 }
 
@@ -139,20 +130,32 @@ void rtl_433_Callback(char *msg)
 
     char path[128];
     const char* model = data["model"];
-    int channel = data["channel"];  
+    int channel = data["channel"];
 
-    sprintf(path, "%s-%d", model, channel);
-    for(int pos = 0; pos < strlen(path); pos++)
+    bool publish = false;
+
+    if(!strcmp(model, "status"))
     {
-        if(path[pos] == ' ')
+        sprintf(path, "status");
+        publish = (current_config.mqtt_publish & 2);
+    }
+    else
+    {
+        sprintf(path, "%s-%d", model, channel);
+        for(int pos = 0; pos < strlen(path); pos++)
         {
-            path[pos] = '_';
+            if(path[pos] == ' ')
+            {
+                path[pos] = '_';
+            }
         }
+
+        rcv_addreceived(path, msg);
+
+        publish = rcv_enabled(path) && (current_config.mqtt_publish & 1);
     }
 
-    rcv_addreceived(path, msg);
-
-    if(rcv_enabled(path) && (current_config.mqtt_publish & 1))
+    if(publish)
     {
         for (auto dataobj : data)
         {
@@ -187,6 +190,15 @@ void rcv_setup()
 
 bool rcv_loop()
 {
+    uint32_t time = millis();
+    static int nextTime = 0;
+
     rf.loop();
+
+    if (time >= nextTime)
+    {
+        nextTime = time + 60000;
+        rf.getStatus(0);
+    }
     return false;
 }
