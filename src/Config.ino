@@ -17,7 +17,7 @@ void cfg_save()
 
     if (strlen(current_config.hostname) < 2)
     {
-        strcpy(current_config.hostname, "Geiger");
+        strcpy(current_config.hostname, "RF433");
     }
 
     file.write((uint8_t *)&current_config, sizeof(current_config));
@@ -36,6 +36,7 @@ void cfg_reset()
     strcpy(current_config.mqtt_user, "");
     strcpy(current_config.mqtt_password, "");
     strcpy(current_config.mqtt_client, "RF433-NAME");
+    strcpy(current_config.mqtt_filter, "");
     current_config.mqtt_publish = 0;
 
     current_config.verbose = 7;

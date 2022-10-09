@@ -188,10 +188,10 @@ bool mqtt_loop()
 
                 if((main_duration_max > 0) && (main_duration_max < 1000000) && (main_duration_min > 0) && (main_duration_min < 1000000))
                 {
-                    mqtt_publish_float((char *)"feeds/float/%s/main_duration", main_duration);
-                    mqtt_publish_float((char *)"feeds/float/%s/main_duration_min", main_duration_min);
-                    mqtt_publish_float((char *)"feeds/float/%s/main_duration_max", main_duration_max);
-                    mqtt_publish_float((char *)"feeds/float/%s/main_duration_avg", main_duration_avg);
+                    mqtt_publish_float((char *)"test/float/%s/debug/main_duration", main_duration);
+                    mqtt_publish_float((char *)"feeds/float/%s/debug/main_duration_min", main_duration_min);
+                    mqtt_publish_float((char *)"feeds/float/%s/debug/main_duration_max", main_duration_max);
+                    mqtt_publish_float((char *)"feeds/float/%s/debug/main_duration_avg", main_duration_avg);
                 }
                 main_duration_max = 0;
                 main_duration_min = 1000000;

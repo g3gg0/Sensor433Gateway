@@ -350,11 +350,9 @@ String SendHTML()
     ptr += "p {font-size: 14px;color: #888;margin-bottom: 10px;}\n";
     ptr += "td {padding: 0.3em}\n";
     ptr += "</style>\n";
-    /* https://github.com/mdbassit/Coloris */
-    ptr += "<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/gh/mdbassit/Coloris@latest/dist/coloris.min.css\"/>\n";
-    ptr += "<script src=\"https://cdn.jsdelivr.net/gh/mdbassit/Coloris@latest/dist/coloris.min.js\"></script>\n";
     ptr += "</head>\n";
     ptr += "<body>\n";
+    ptr += "<script>function addSensor(sensor) { var item = document.getElementById('mqtt_filter'); item.value = item.value.replace(sensor, '').replace('  ', ' '); item.value = (item.value + ' ' + sensor).trim(); }</script>\n";
 
     sprintf(buf, "<h1>433 MHz Gateway</h1>\n");
     ptr += buf;
@@ -372,7 +370,7 @@ String SendHTML()
     {
         ptr += "<a href=\"/ota\">[Enable OTA]</a> ";
     }
-    //sprintf(buf, "<br>Voltage: %3.2f V at %d Hz</h1>\n", adc_voltage_avg, pwm_freq);
+    sprintf(buf, "");
     ptr += buf;
     ptr += "<br><br>\n";
 
@@ -488,11 +486,79 @@ String SendHTML()
     ADD_CONFIG("mqtt_user", current_config.mqtt_user, "%s", "MQTT Username");
     ADD_CONFIG("mqtt_password", current_config.mqtt_password, "%s", "MQTT Password");
     ADD_CONFIG("mqtt_client", current_config.mqtt_client, "%s", "MQTT Client Identification");
-    ADD_CONFIG_CHECK5("verbose", current_config.verbose, "%d", "Verbosity", "Serial", "Beep", "Blink", "Fading", "EPD");
-    ADD_CONFIG_CHECK4("mqtt_publish", current_config.mqtt_publish, "%d", "MQTT publishes", "Geiger", "Debug", "BME280", "CCS811");
-    ADD_CONFIG("http_update", "", "%s", "Update URL (<a href=\"javascript:void(0);\" onclick=\"document.getElementById('http_update').value = 'https://g3gg0.magiclantern.fm/Firmware/Geiger/firmware.bin'\">Release</a>)");
+    ADD_CONFIG("mqtt_filter", current_config.mqtt_filter, "%s", "Sensors to publish (space separated list of MQTT IDs)");
+    ADD_CONFIG_CHECK5("verbose", current_config.verbose, "%d", "Verbosity", "Serial", "_", "_", "_", "_");
+    ADD_CONFIG_CHECK4("mqtt_publish", current_config.mqtt_publish, "%d", "MQTT publishes", "RF messages", "Debug", "_", "_");
+    ADD_CONFIG("http_update", "", "%s", "Update URL (<a href=\"javascript:void(0);\" onclick=\"document.getElementById('http_update').value = 'https://g3gg0.magiclantern.fm/Firmware/RF433/firmware.bin'\">Release</a>)");
+
+
 
     ptr += "<td></td><td><input type=\"submit\" value=\"Save\"><button type=\"submit\" name=\"reboot\" value=\"true\">Save &amp; Reboot</button></td></table></form>\n";
+
+    
+    ptr += "<br><br><h2>Captured signals</h2>\n<table>";
+    ptr += "<tr><td align=\"left\"><tt>";
+    ptr += "MQTT ID";
+    ptr += "</tt></td><td align=\"left\"><tt>";
+    ptr += "Model";
+    ptr += "</tt></td><td align=\"left\"><tt>";
+    ptr += "ID";
+    ptr += "</tt></td><td align=\"left\"><tt>";
+    ptr += "Channel";
+    ptr += "</tt></td><td align=\"left\"><tt>";
+    ptr += "Temperature";
+    ptr += "</tt></td><td align=\"left\"><tt>";
+    ptr += "Humidity";
+    ptr += "</tt></td><td align=\"left\"><tt>";
+    ptr += "Rain";
+    ptr += "</tt></td><td align=\"left\"><tt>";
+    ptr += "Protocol";
+    ptr += "</tt></td><td align=\"left\"><tt>";
+    ptr += "RSSI";
+    ptr += "</tt></td></tr>";
+
+    for (auto it = ReceiverLastReceived.begin(); it != ReceiverLastReceived.end(); it++)
+    {
+        const char *tmp_str = strdup(it->second);
+
+        DynamicJsonBuffer json(512);
+        JsonObject &data = json.parseObject(tmp_str);
+
+        const char *model = data["model"];
+        const char *protocol = data["protocol"];
+        int id = data["id"];
+        int channel = data["channel"];
+        float temp = data["temperature_C"];
+        float humidity = data["humidity"];
+        float rain = data["rain"];
+        int rssi = data["rssi"];
+
+        ptr += "<tr><td align=\"left\"><tt><a href=\"javascript:void(0);\" onclick=\"addSensor('";
+        ptr += it->first;
+        ptr += "');\">";
+        ptr += it->first;
+        ptr += "</s></tt></td><td align=\"left\"><tt>";
+        ptr += model;
+        ptr += "</tt></td><td align=\"left\"><tt>";
+        ptr += id;
+        ptr += "</tt></td><td align=\"left\"><tt>";
+        ptr += channel;
+        ptr += "</tt></td><td align=\"left\"><tt>";
+        ptr += temp;
+        ptr += "</tt></td><td align=\"left\"><tt>";
+        ptr += humidity;
+        ptr += "</tt></td><td align=\"left\"><tt>";
+        ptr += rain;
+        ptr += "</tt></td><td align=\"left\"><tt>";
+        ptr += protocol;
+        ptr += "</tt></td><td align=\"left\"><tt>";
+        ptr += rssi;
+        ptr += " dBm</tt></td></tr>";
+
+        free((void*)tmp_str);
+    }
+    ptr += "</table>";
+
     ptr += "</body>\n";
     ptr += "</html>\n";
 

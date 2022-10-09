@@ -18,6 +18,7 @@ typedef struct
     char mqtt_user[32];
     char mqtt_password[32];
     char mqtt_client[32];
+    char mqtt_filter[256];
 } t_cfg;
 
 
