@@ -284,6 +284,9 @@ void handle_set_parm()
     strncpy(current_config.mqtt_password, webserver.arg("mqtt_password").c_str(), sizeof(current_config.mqtt_password));
     strncpy(current_config.mqtt_client, webserver.arg("mqtt_client").c_str(), sizeof(current_config.mqtt_client));
     strncpy(current_config.mqtt_filter, webserver.arg("mqtt_filter").c_str(), sizeof(current_config.mqtt_filter));
+    
+    strncpy(current_config.aps_hostname, webserver.arg("aps_hostname").c_str(), sizeof(current_config.aps_hostname));
+    strncpy(current_config.aps_mqttpath, webserver.arg("aps_mqttpath").c_str(), sizeof(current_config.aps_mqttpath));
 
     cfg_save();
 
@@ -492,6 +495,8 @@ String SendHTML()
     ADD_CONFIG_CHECK4("mqtt_publish", current_config.mqtt_publish, "%d", "MQTT publishes", "RF messages", "Debug", "_", "_");
     ADD_CONFIG("http_update", "", "%s", "Update URL (<a href=\"javascript:void(0);\" onclick=\"document.getElementById('http_update').value = 'https://g3gg0.magiclantern.fm/Firmware/RF433/firmware.bin'\">Release</a>)");
 
+    ADD_CONFIG("aps_hostname", current_config.aps_hostname, "%s", "APS ECU address");
+    ADD_CONFIG("aps_mqttpath", current_config.aps_mqttpath, "%s", "MQTT path for APS ECU reports");
 
 
     ptr += "<td></td><td><input type=\"submit\" value=\"Save\"><button type=\"submit\" name=\"reboot\" value=\"true\">Save &amp; Reboot</button></td></table></form>\n";

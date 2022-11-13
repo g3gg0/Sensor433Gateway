@@ -55,6 +55,8 @@ void setup()
     mqtt_setup();
     Serial.printf("[i]   Setup rtl433\n");
     rcv_setup();
+    Serial.printf("[i]   Setup APS ECU\n");
+    aps_setup();
 
     Serial.println("Setup done");
 }
@@ -73,6 +75,7 @@ void loop()
     hasWork |= mqtt_loop();
     hasWork |= ota_loop();
     hasWork |= rcv_loop();
+    hasWork |= aps_loop();
 
     uint64_t duration = micros() - startTime;
 

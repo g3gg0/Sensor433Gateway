@@ -109,12 +109,34 @@ void mqtt_publish_string(const char *name, const char *value)
     Serial.printf("Published %s : %s\n", path_buffer, value);
 }
 
+void mqtt_publish_string_plain(const char *path_buffer, const char *value)
+{
+    if (!mqtt.publish(path_buffer, value))
+    {
+        mqtt_fail = true;
+    }
+    Serial.printf("Published %s : %s\n", path_buffer, value);
+}
+
 void mqtt_publish_float(const char *name, float value)
 {
     char path_buffer[128];
     char buffer[32];
 
     sprintf(path_buffer, name, current_config.mqtt_client);
+    sprintf(buffer, "%0.2f", value);
+
+    if (!mqtt.publish(path_buffer, buffer))
+    {
+        mqtt_fail = true;
+    }
+    Serial.printf("Published %s : %s\n", path_buffer, buffer);
+}
+
+void mqtt_publish_float_plain(const char *path_buffer, float value)
+{
+    char buffer[32];
+
     sprintf(buffer, "%0.2f", value);
 
     if (!mqtt.publish(path_buffer, buffer))

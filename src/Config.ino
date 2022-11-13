@@ -36,6 +36,8 @@ void cfg_reset()
     strcpy(current_config.mqtt_password, "");
     strcpy(current_config.mqtt_client, "RF433-NAME");
     strcpy(current_config.mqtt_filter, "");
+    strcpy(current_config.aps_hostname, "");
+    strcpy(current_config.aps_mqttpath, "");
     current_config.mqtt_publish = 0;
 
     current_config.verbose = 0;

@@ -4,7 +4,7 @@
 #define CONFIG_SOFTAPNAME  "esp32-config"
 #define CONFIG_OTANAME     "Sensor433Gateway"
 
-#define CONFIG_MAGIC 0xE1AAFF01
+#define CONFIG_MAGIC 0xE1AAFF02
 typedef struct
 {
     uint32_t magic;
@@ -19,6 +19,8 @@ typedef struct
     char mqtt_password[32];
     char mqtt_client[32];
     char mqtt_filter[256];
+    char aps_hostname[64];
+    char aps_mqttpath[64];
 } t_cfg;
 
 
