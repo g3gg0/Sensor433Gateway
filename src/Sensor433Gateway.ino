@@ -10,7 +10,7 @@
 #include <ArduinoLog.h>
 
 #include <esp_task_wdt.h>
-#define WDT_TIMEOUT 30
+#define WDT_TIMEOUT 180
 
 #include "Config.h"
 
@@ -29,9 +29,6 @@ void setup()
     Serial.begin(115200);
     Serial.printf("\n\n\n");
 
-    esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
-    esp_task_wdt_add(NULL); //add current thread to WDT watch
-
     esp_task_wdt_reset();
 
     Serial.printf("[i] SDK:          '%s'\n", ESP.getSdkVersion());
@@ -44,6 +41,10 @@ void setup()
     Serial.printf("[i] SPIRam        %d/%d\n", ESP.getFreePsram(), ESP.getPsramSize());
     Serial.printf("\n");
     Serial.printf("[i] Starting\n");
+
+    Serial.printf("[i]   Setup WDT\n");
+    esp_task_wdt_init(WDT_TIMEOUT, true);
+    esp_task_wdt_add(NULL);
 
     Serial.printf("[i]   Setup LEDs\n");
     led_setup();
