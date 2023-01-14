@@ -9,6 +9,9 @@
 #include <ArduinoJson.h>
 #include <ArduinoLog.h>
 
+#include <esp_task_wdt.h>
+#define WDT_TIMEOUT 30
+
 #include "Config.h"
 
 int loopCount = 0;
@@ -25,6 +28,11 @@ void setup()
 {
     Serial.begin(115200);
     Serial.printf("\n\n\n");
+
+    esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
+    esp_task_wdt_add(NULL); //add current thread to WDT watch
+
+    esp_task_wdt_reset();
 
     Serial.printf("[i] SDK:          '%s'\n", ESP.getSdkVersion());
     Serial.printf("[i] CPU Speed:    %d MHz\n", ESP.getCpuFreqMHz());
@@ -101,4 +109,5 @@ void loop()
     {
         delay(10);
     }
+    esp_task_wdt_reset();
 }

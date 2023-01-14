@@ -43,7 +43,7 @@ typedef struct __attribute__((packed))
 {
     uint8_t timestamp[7];
     uint8_t uid[6];
-    uint16_t unknown;
+    uint8_t unknown[2];
     uint8_t model;
     uint16_t frequency;
     uint16_t temperature;
