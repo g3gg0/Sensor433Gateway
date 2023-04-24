@@ -1,14 +1,9 @@
+
 #include <Arduino.h>
+#include <WiFi.h>
+#include <WiFiUdp.h>
 
-#include "Time.h"
-
-enum statusType
-{
-    Idle,
-    Sent,
-    Received,
-    Pause
-};
+#include <NTP.h>
 
 IPAddress timeServerIP; // time.nist.gov NTP server address
 const char *ntpServerName = "time.nist.gov";
@@ -31,125 +26,6 @@ unsigned long setup_time_offset = 2;
 #define DAYS_PER_4Y (365 * 4 + 1)
 
 statusType currentStatus = Idle;
-
-void time_setup()
-{
-    Udp.begin(localPort);
-    currentStatus = Idle;
-    lastSent = 0;
-    timeReference = 0;
-    memset(packetBuffer, 0x00, sizeof(packetBuffer));
-}
-
-const char *Time_getStateString()
-{
-    static char retString[64];
-    const char *state = "";
-
-    switch (currentStatus)
-    {
-    default:
-        state = "Unknown state";
-        break;
-
-    case Idle:
-        state = "Idle";
-        break;
-
-    case Sent:
-        state = "Sent";
-        break;
-
-    case Received:
-        state = "Received";
-        break;
-
-    case Pause:
-        state = "Pause";
-        break;
-    }
-
-    snprintf(retString, sizeof(retString), "%s, ref: %lu, last: %lu, retries: %u, millis(): %lu", state, timeReference, lastSent, retries, millis());
-
-    return retString;
-}
-
-bool time_loop()
-{
-    if (WiFi.status() != WL_CONNECTED)
-    {
-        return false;
-    }
-
-    switch (currentStatus)
-    {
-        case Idle:
-            if (!time_valid || millis() - lastSent > 1000 * 60 * 60)
-            {
-                Serial.println("[NTP] Sending request");
-
-                lastSent = millis();
-                currentStatus = Sent;
-                WiFi.hostByName(ntpServerName, timeServerIP);
-                sendNTPpacket(timeServerIP); // send an NTP packet to a time server
-            }
-            break;
-
-        case Sent:
-            if (millis() - lastSent > 1000 * 10)
-            {
-                Serial.println("[NTP] No reply, resend");
-                if (retries < 10)
-                {
-                    retries++;
-                    currentStatus = Idle;
-                }
-                else
-                {
-                    currentStatus = Pause;
-                }
-            }
-            else if (Udp.parsePacket())
-            {
-                timeReference = millis();
-                currentStatus = Received;
-                Udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
-            }
-            break;
-
-        case Received:
-        {
-            unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
-            unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
-            secsSince1900 = highWord << 16 | lowWord;
-
-            printTime();
-
-            if (!time_valid)
-            {
-                time_valid = true;
-            }
-
-            retries = 0;
-            currentStatus = Idle;
-            break;
-        }
-
-        case Pause:
-            if (millis() - lastSent > 1000 * 60 * 2)
-            {
-                currentStatus = Idle;
-            }
-            break;
-
-        default:
-            Serial.println("[NTP] Unknown state");
-            currentStatus = Idle;
-            break;
-    }
-
-    return false;
-}
 
 void printTime()
 {
@@ -272,4 +148,123 @@ void sendNTPpacket(IPAddress &address)
     Udp.beginPacket(address, 123); // NTP requests are to port 123
     Udp.write(packetBuffer, NTP_PACKET_SIZE);
     Udp.endPacket();
+}
+
+const char *Time_getStateString()
+{
+    static char retString[64];
+    const char *state = "";
+
+    switch (currentStatus)
+    {
+    default:
+        state = "Unknown state";
+        break;
+
+    case Idle:
+        state = "Idle";
+        break;
+
+    case Sent:
+        state = "Sent";
+        break;
+
+    case Received:
+        state = "Received";
+        break;
+
+    case Pause:
+        state = "Pause";
+        break;
+    }
+
+    snprintf(retString, sizeof(retString), "%s, ref: %lu, last: %lu, retries: %u, millis(): %lu", state, timeReference, lastSent, retries, millis());
+
+    return retString;
+}
+
+void ntp_setup()
+{
+    Udp.begin(localPort);
+    currentStatus = Idle;
+    lastSent = 0;
+    timeReference = 0;
+    memset(packetBuffer, 0x00, sizeof(packetBuffer));
+}
+
+bool ntp_loop()
+{
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        return false;
+    }
+
+    switch (currentStatus)
+    {
+    default:
+        Serial.println("[NTP] Unknown state");
+        currentStatus = Idle;
+        break;
+
+    case Idle:
+        if (!time_valid || millis() - lastSent > 1000 * 60 * 60)
+        {
+            Serial.println("[NTP] Sending request");
+
+            lastSent = millis();
+            currentStatus = Sent;
+            WiFi.hostByName(ntpServerName, timeServerIP);
+            sendNTPpacket(timeServerIP); // send an NTP packet to a time server
+        }
+        break;
+
+    case Sent:
+        if (millis() - lastSent > 1000 * 10)
+        {
+            Serial.println("[NTP] No reply, resend");
+            if (retries < 10)
+            {
+                retries++;
+                currentStatus = Idle;
+            }
+            else
+            {
+                currentStatus = Pause;
+            }
+        }
+        else if (Udp.parsePacket())
+        {
+            timeReference = millis();
+            currentStatus = Received;
+            Udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
+        }
+        break;
+
+    case Received:
+    {
+        unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
+        unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
+        secsSince1900 = highWord << 16 | lowWord;
+
+        printTime();
+
+        if (!time_valid)
+        {
+            time_valid = true;
+        }
+
+        retries = 0;
+        currentStatus = Idle;
+        break;
+    }
+
+    case Pause:
+        if (millis() - lastSent > 1000 * 60 * 2)
+        {
+            currentStatus = Idle;
+        }
+        break;
+    }
+
+    return false;
 }

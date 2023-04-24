@@ -1,28 +1,34 @@
 
-//#define TESTMODE
+// #define TESTMODE
 
+#include <Arduino.h>
+#include <WiFi.h>
 #include <PubSubClient.h>
 #include <ESP32httpUpdate.h>
+#include <APS_ECU.h>
+#include <HA.h>
 #include <Config.h>
-
+#include <MQTT.h>
 
 WiFiClient client;
 PubSubClient mqtt(client);
 
+extern int wifi_rssi;
 
 extern float main_duration_avg;
 extern float main_duration_max;
 extern float main_duration_min;
 extern float main_duration;
 
-int mqtt_last_publish_time = 0;
-int mqtt_lastConnect = 0;
-int mqtt_retries = 0;
+uint32_t mqtt_last_publish_time = 0;
+uint32_t mqtt_lastConnect = 0;
+uint32_t mqtt_retries = 0;
 bool mqtt_fail = false;
 
 char command_topic[64];
 char response_topic[64];
 
+void ota_setup();
 
 void callback(char *topic, byte *payload, unsigned int length)
 {
@@ -39,6 +45,8 @@ void callback(char *topic, byte *payload, unsigned int length)
 
     payload[length] = 0;
 
+    ha_received(topic, (const char *)payload);
+
     if (!strcmp(topic, command_topic))
     {
         char *command = (char *)payload;
@@ -46,7 +54,7 @@ void callback(char *topic, byte *payload, unsigned int length)
 
         if (!strncmp(command, "http", 4))
         {
-            snprintf(buf, sizeof(buf)-1, "updating from: '%s'", command);
+            snprintf(buf, sizeof(buf) - 1, "updating from: '%s'", command);
             Serial.printf("%s\n", buf);
 
             mqtt.publish(response_topic, buf);
@@ -55,45 +63,78 @@ void callback(char *topic, byte *payload, unsigned int length)
 
             switch (ret)
             {
-                case HTTP_UPDATE_FAILED:
-                    snprintf(buf, sizeof(buf)-1, "HTTP_UPDATE_FAILED Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-                    mqtt.publish(response_topic, buf);
-                    Serial.printf("%s\n", buf);
-                    break;
+            case HTTP_UPDATE_FAILED:
+                snprintf(buf, sizeof(buf) - 1, "HTTP_UPDATE_FAILED Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+                mqtt.publish(response_topic, buf);
+                Serial.printf("%s\n", buf);
+                break;
 
-                case HTTP_UPDATE_NO_UPDATES:
-                    snprintf(buf, sizeof(buf)-1, "HTTP_UPDATE_NO_UPDATES");
-                    mqtt.publish(response_topic, buf);
-                    Serial.printf("%s\n", buf);
-                    break;
+            case HTTP_UPDATE_NO_UPDATES:
+                snprintf(buf, sizeof(buf) - 1, "HTTP_UPDATE_NO_UPDATES");
+                mqtt.publish(response_topic, buf);
+                Serial.printf("%s\n", buf);
+                break;
 
-                case HTTP_UPDATE_OK:
-                    snprintf(buf, sizeof(buf)-1, "HTTP_UPDATE_OK");
-                    mqtt.publish(response_topic, buf);
-                    Serial.printf("%s\n", buf);
-                    delay(500);
-                    ESP.restart();
-                    break;
+            case HTTP_UPDATE_OK:
+                snprintf(buf, sizeof(buf) - 1, "HTTP_UPDATE_OK");
+                mqtt.publish(response_topic, buf);
+                Serial.printf("%s\n", buf);
+                delay(500);
+                ESP.restart();
+                break;
 
-                default:
-                    snprintf(buf, sizeof(buf)-1, "update failed");
-                    mqtt.publish(response_topic, buf);
-                    Serial.printf("%s\n", buf);
-                    break;
+            default:
+                snprintf(buf, sizeof(buf) - 1, "update failed");
+                mqtt.publish(response_topic, buf);
+                Serial.printf("%s\n", buf);
+                break;
             }
         }
         else
         {
-            snprintf(buf, sizeof(buf)-1, "unknown command: '%s'", command);
+            snprintf(buf, sizeof(buf) - 1, "unknown command: '%s'", command);
             mqtt.publish(response_topic, buf);
             Serial.printf("%s\n", buf);
         }
     }
 }
 
+void mqtt_ota_received(const t_ha_entity *entity, void *ctx, const char *message)
+{
+    ota_setup();
+}
+
 void mqtt_setup()
 {
     mqtt.setCallback(callback);
+
+    ha_setup();
+
+    t_ha_entity entity;
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "ota";
+    entity.name = "Enable OTA";
+    entity.type = ha_button;
+    entity.cmd_t = "command/%s/ota";
+    entity.received = &mqtt_ota_received;
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "rssi";
+    entity.name = "WiFi RSSI";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/integer/%s/rssi";
+    entity.unit_of_meas = "dBm";
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "error";
+    entity.name = "Error message";
+    entity.type = ha_text;
+    entity.stat_t = "feeds/string/%s/error";
+    entity.cmd_t = "feeds/string/%s/error";
+    ha_add(&entity);
 }
 
 void mqtt_publish_string(const char *name, const char *value)
@@ -165,10 +206,23 @@ void mqtt_publish_int(const char *name, uint32_t value)
     Serial.printf("Published %s : %s\n", path_buffer, buffer);
 }
 
+void mqtt_publish_int_plain(const char *path_buffer, uint32_t value)
+{
+    char buffer[32];
+
+    sprintf(buffer, "%d", value);
+
+    if (!mqtt.publish(path_buffer, buffer))
+    {
+        mqtt_fail = true;
+    }
+    Serial.printf("Published %s : %s\n", path_buffer, buffer);
+}
+
 bool mqtt_loop()
 {
     uint32_t time = millis();
-    static int nextTime = 0;
+    static uint32_t nextTime = 0;
 
 #ifdef TESTMODE
     return false;
@@ -188,6 +242,8 @@ bool mqtt_loop()
 
     mqtt.loop();
 
+    ha_loop();
+
     if (time >= nextTime)
     {
         bool do_publish = false;
@@ -199,6 +255,9 @@ bool mqtt_loop()
 
         if (do_publish)
         {
+            /* debug */
+            mqtt_publish_int("feeds/integer/%s/rssi", wifi_rssi);
+
             mqtt_last_publish_time = time;
 
             if (current_config.mqtt_publish & 1)
@@ -208,7 +267,7 @@ bool mqtt_loop()
             {
                 mqtt_publish_int((char *)"feeds/integer/%s/version", PIO_SRC_REVNUM);
 
-                if((main_duration_max > 0) && (main_duration_max < 1000000) && (main_duration_min > 0) && (main_duration_min < 1000000))
+                if ((main_duration_max > 0) && (main_duration_max < 1000000) && (main_duration_min > 0) && (main_duration_min < 1000000))
                 {
                     mqtt_publish_float((char *)"test/float/%s/debug/main_duration", main_duration);
                     mqtt_publish_float((char *)"feeds/float/%s/debug/main_duration_min", main_duration_min);
@@ -227,7 +286,7 @@ bool mqtt_loop()
 
 void MQTT_connect()
 {
-    int curTime = millis();
+    uint32_t curTime = millis();
     int8_t ret;
 
     if (strlen(current_config.mqtt_server) == 0)
@@ -236,7 +295,7 @@ void MQTT_connect()
     }
 
     mqtt.setServer(current_config.mqtt_server, current_config.mqtt_port);
-    
+
     if (WiFi.status() != WL_CONNECTED)
     {
         return;
@@ -255,7 +314,7 @@ void MQTT_connect()
     mqtt_lastConnect = curTime;
 
     Serial.println("MQTT: Connecting to MQTT... ");
-    
+
     sprintf(command_topic, "tele/%s/command", current_config.mqtt_client);
     sprintf(response_topic, "tele/%s/response", current_config.mqtt_client);
 
@@ -276,6 +335,7 @@ void MQTT_connect()
     {
         Serial.println("MQTT Connected!");
         mqtt.subscribe(command_topic);
+        ha_connected();
         mqtt_publish_string((char *)"feeds/string/%s/error", "");
     }
 }

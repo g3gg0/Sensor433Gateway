@@ -1,3 +1,4 @@
+#pragma once
 
 /*
     from https://github.com/HectorMalot/ecur/blob/f094b3ba8f7cbf15c183e7061e49ee96afbc9994/ecur.go
@@ -36,7 +37,7 @@ typedef struct __attribute__((packed))
     uint8_t last_time_connected[7];
     uint16_t inverters_registered;
     uint16_t inverters_online_;
-    uint16_t ecu_channel;
+    uint8_t ecu_channel[2];
 } t_ecuinfo;
 
 typedef struct __attribute__((packed))
@@ -59,3 +60,9 @@ typedef struct __attribute__((packed))
     uint16_t packets;
     t_ecuinfoinverter inverter;
 } t_ecudetailed;
+
+void aps_publish_int(const char *name, uint32_t value);
+void aps_publish_float(const char *name, float value);
+void aps_publish_string(const char *name, const char *value);
+bool aps_loop();
+void aps_setup();

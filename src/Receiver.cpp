@@ -1,6 +1,12 @@
-#include <map>
-#include <list>
-#include <string.h>
+
+#include <Arduino.h>
+#include <ArduinoJson.h>
+#include <rtl_433_ESP.h>
+
+#include <Receiver.h>
+#include <HA.h>
+#include <Config.h>
+#include <MQTT.h>
 
 #ifndef RF_MODULE_FREQUENCY
 #define RF_MODULE_FREQUENCY 433.92
@@ -8,18 +14,9 @@
 
 #define JSON_MSG_BUFFER 512
 
-char messageBuffer[JSON_MSG_BUFFER];
-
-typedef struct map_entry
-{
-    char *first;
-    char *second;
-} t_map_entry;
-
 std::list<t_map_entry> ReceiverLastReceived;
 
 rtl_433_ESP rf(-1); // use -1 to disable transmitter
-
 
 void rcv_addreceived(const char *path, const char *json)
 {
@@ -41,14 +38,7 @@ void rcv_addreceived(const char *path, const char *json)
     ReceiverLastReceived.push_back(entry);
 }
 
-void logJson(JsonObject &jsondata)
-{
-    char JSONmessageBuffer[jsondata.measureLength() + 1];
-    jsondata.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
-    Serial.printf("Received message : %s" CR, JSONmessageBuffer);
-}
-
-void publish_string(const char *path, const char *elem, const char* value)
+void rcv_publish_string(const char *path, const char *elem, const char *value)
 {
     char tmp[128];
     char topic[128];
@@ -60,7 +50,7 @@ void publish_string(const char *path, const char *elem, const char* value)
     mqtt_publish_string(topic, value);
 }
 
-void publish_float(const char *path, const char *elem, float value)
+void rcv_publish_float(const char *path, const char *elem, float value)
 {
     char tmp[128];
     char topic[128];
@@ -72,7 +62,7 @@ void publish_float(const char *path, const char *elem, float value)
     mqtt_publish_float(topic, value);
 }
 
-void publish_int(const char *path, const char *elem, int value)
+void rcv_publish_int(const char *path, const char *elem, int value)
 {
     char tmp[128];
     char topic[128];
@@ -89,9 +79,9 @@ bool rcv_enabled(const char *path)
     char *fields = current_config.mqtt_filter;
     int pos = 0;
 
-    while(fields[pos])
+    while (fields[pos])
     {
-        if(fields[pos] == ' ')
+        if (fields[pos] == ' ')
         {
             pos++;
         }
@@ -101,13 +91,13 @@ bool rcv_enabled(const char *path)
 
             const char *end = strchr(cur_str, ' ');
             int length = strlen(cur_str);
-            
-            if(end)
+
+            if (end)
             {
                 length = (int)(end - cur_str);
             }
 
-            if(!strncmp(cur_str, path, length))
+            if (!strncmp(cur_str, path, length))
             {
                 return true;
             }
@@ -119,22 +109,20 @@ bool rcv_enabled(const char *path)
     return false;
 }
 
-void rtl_433_Callback(char *msg)
+void rcv_callback(char *msg)
 {
     const char *message = strdup(msg);
 
     DynamicJsonBuffer json(JSON_MSG_BUFFER);
     JsonObject &data = json.parseObject(message);
 
-    logJson(data);
-
     char path[128];
-    const char* model = data["model"];
+    const char *model = data["model"];
     int channel = data["channel"];
 
     bool publish = false;
 
-    if(!strcmp(model, "status"))
+    if (!strcmp(model, "status"))
     {
         sprintf(path, "status");
         publish = (current_config.mqtt_publish & 2);
@@ -142,9 +130,9 @@ void rtl_433_Callback(char *msg)
     else
     {
         sprintf(path, "%s-%d", model, channel);
-        for(int pos = 0; pos < strlen(path); pos++)
+        for (int pos = 0; pos < strlen(path); pos++)
         {
-            if(path[pos] == ' ')
+            if (path[pos] == ' ')
             {
                 path[pos] = '_';
             }
@@ -155,36 +143,38 @@ void rtl_433_Callback(char *msg)
         publish = rcv_enabled(path) && (current_config.mqtt_publish & 1);
     }
 
-    if(publish)
+    if (publish)
     {
         for (auto dataobj : data)
         {
-            if(dataobj.value.is<int>())
+            if (dataobj.value.is<int>())
             {
-                publish_int(path, dataobj.key, dataobj.value);
+                rcv_publish_int(path, dataobj.key, dataobj.value);
             }
-            else if(dataobj.value.is<float>())
+            else if (dataobj.value.is<float>())
             {
-                publish_float(path, dataobj.key, dataobj.value);
+                rcv_publish_float(path, dataobj.key, dataobj.value);
             }
-            else if(dataobj.value.is<bool>())
+            else if (dataobj.value.is<bool>())
             {
-                publish_int(path, dataobj.key, dataobj.value ? 1 : 0);
+                rcv_publish_int(path, dataobj.key, dataobj.value ? 1 : 0);
             }
-            else if(dataobj.value.is<const char*>())
+            else if (dataobj.value.is<const char *>())
             {
-                publish_string(path, dataobj.key, dataobj.value);
+                rcv_publish_string(path, dataobj.key, dataobj.value);
             }
         }
     }
 
-    free((void*)message);
+    free((void *)message);
 }
 
 void rcv_setup()
 {
+    static char messageBuffer[JSON_MSG_BUFFER];
+
     rf.initReceiver(RF_MODULE_RECEIVER_GPIO, RF_MODULE_FREQUENCY);
-    rf.setCallback(rtl_433_Callback, messageBuffer, JSON_MSG_BUFFER);
+    rf.setCallback(rcv_callback, messageBuffer, JSON_MSG_BUFFER);
     rf.enableReceiver(RF_MODULE_RECEIVER_GPIO);
 }
 
@@ -198,7 +188,7 @@ bool rcv_loop()
     if (time >= nextTime)
     {
         nextTime = time + 60000;
-        rf.getStatus(0);
+        //rf.getStatus(0);
     }
     return false;
 }

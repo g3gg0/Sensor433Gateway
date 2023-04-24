@@ -1,5 +1,9 @@
 
-#include "APS_ECU.h"
+#include <Arduino.h>
+#include <WiFi.h>
+#include <APS_ECU.h>
+#include <HA.h>
+#include <Config.h>
 
 float aps_energy_lifetime = 0;
 float aps_power_current = 0;
@@ -10,15 +14,171 @@ float aps_power_a = 0;
 float aps_voltage_a = 0;
 float aps_power_b = 0;
 float aps_voltage_b = 0;
+char aps_channel[3];
 char aps_ecu_serial[32];
 char aps_ecu_firmware[32];
-char aps_ds3_serial[32];
-char aps_ds3_unk[16];
+char aps_inv_serial[32];
+char aps_inv_unk[16];
+char aps_inv_model[16];
 char aps_timestamp[32];
 char aps_timestamp_mqtt[32];
 
+void mqtt_publish_string_plain(const char *path_buffer, const char *value);
+void mqtt_publish_float_plain(const char *path_buffer, float value);
+void mqtt_publish_int_plain(const char *path_buffer, uint32_t value);
+
 void aps_setup()
 {
+    t_ha_entity entity;
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "channel";
+    entity.name = "Channel";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/string/%s/channel";
+    entity.alt_name = current_config.aps_mqttpath;
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "power_current";
+    entity.name = "Solar power";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/float/%s/power_current";
+    entity.alt_name = current_config.aps_mqttpath;
+    entity.unit_of_meas = "W";
+    entity.dev_class = "power";
+    entity.state_class = "measurement";
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "energy_day";
+    entity.name = "Solar energy daily";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/float/%s/energy_day";
+    entity.alt_name = current_config.aps_mqttpath;
+    entity.unit_of_meas = "Wh";
+    entity.dev_class = "energy";
+    entity.state_class = "total_increasing";
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "energy_lifetime";
+    entity.name = "Solar energy lifetime";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/float/%s/energy_lifetime";
+    entity.alt_name = current_config.aps_mqttpath;
+    entity.unit_of_meas = "Wh";
+    entity.dev_class = "energy";
+    entity.state_class = "total_increasing";
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "power_a";
+    entity.name = "Solar power channel A";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/float/%s/power_a";
+    entity.alt_name = current_config.aps_mqttpath;
+    entity.unit_of_meas = "W";
+    entity.dev_class = "power";
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "power_b";
+    entity.name = "Solar power channel B";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/float/%s/power_b";
+    entity.alt_name = current_config.aps_mqttpath;
+    entity.unit_of_meas = "W";
+    entity.dev_class = "power";
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "voltage_a";
+    entity.name = "Solar voltage channel A";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/float/%s/voltage_a";
+    entity.alt_name = current_config.aps_mqttpath;
+    entity.unit_of_meas = "V";
+    entity.dev_class = "voltage";
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "voltage_b";
+    entity.name = "Solar voltage channel B";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/float/%s/voltage_b";
+    entity.alt_name = current_config.aps_mqttpath;
+    entity.unit_of_meas = "V";
+    entity.dev_class = "voltage";
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "frequency";
+    entity.name = "Solar mains frequency";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/float/%s/frequency";
+    entity.alt_name = current_config.aps_mqttpath;
+    entity.unit_of_meas = "Hz";
+    entity.dev_class = "frequency";
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "temperature";
+    entity.name = "Solar inverter temperature";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/float/%s/temperature";
+    entity.alt_name = current_config.aps_mqttpath;
+    entity.unit_of_meas = "°C";
+    entity.dev_class = "temperature";
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "ecu_serial";
+    entity.name = "Solar gateway serial number";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/string/%s/ecu_serial";
+    entity.alt_name = current_config.aps_mqttpath;
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "ecu_firmware";
+    entity.name = "Solar gateway firmware";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/string/%s/ecu_firmware";
+    entity.alt_name = current_config.aps_mqttpath;
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "inverter_serial";
+    entity.name = "Solar inverter serial number";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/string/%s/inverter_serial";
+    entity.alt_name = current_config.aps_mqttpath;
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "inverter_unknown";
+    entity.name = "Solar inverter unknown info";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/string/%s/inverter_unknown";
+    entity.alt_name = current_config.aps_mqttpath;
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "inverter_model";
+    entity.name = "Solar inverter model";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/string/%s/inverter_model";
+    entity.alt_name = current_config.aps_mqttpath;
+    ha_add(&entity);
+
+    memset(&entity, 0x00, sizeof(entity));
+    entity.id = "timestamp";
+    entity.name = "Solar gateway sync timestamp";
+    entity.type = ha_sensor;
+    entity.stat_t = "feeds/string/%s/timestamp";
+    entity.alt_name = current_config.aps_mqttpath;
+    ha_add(&entity);
 }
 
 bool aps_request(uint32_t command, uint8_t *payload, uint32_t payload_length, uint8_t *response, uint32_t *length)
@@ -123,6 +283,18 @@ bool aps_request(uint32_t command, uint8_t *payload, uint32_t payload_length, ui
     return true;
 }
 
+void aps_publish_int(const char *name, uint32_t value)
+{
+    char path_buffer[128];
+
+    if (strlen(current_config.aps_mqttpath) > 0)
+    {
+        sprintf(path_buffer, "feeds/integer/%s/%s", current_config.aps_mqttpath, name);
+
+        mqtt_publish_int_plain(path_buffer, value);
+    }
+}
+
 void aps_publish_float(const char *name, float value)
 {
     char path_buffer[128];
@@ -171,6 +343,7 @@ bool aps_fetch()
     aps_energy_lifetime = htonl(infos->energy_lifetime) * 100.0f;
     aps_power_current = htonl(infos->power_current);
     aps_energy_day = htonl(infos->energy_day) * 10.0f;
+    sprintf(aps_channel, "%c%c", infos->ecu_channel[0], infos->ecu_channel[1]);
 
     memcpy(aps_ecu_serial, infos->ecuid, 12);
     aps_ecu_serial[12] = 0;
@@ -222,16 +395,16 @@ bool aps_fetch()
     Serial.printf("  power_b:      %f W\n", aps_power_b);
     Serial.printf("  voltage_b:    %f V\n", aps_voltage_b);
 
-
-    strcpy(aps_ds3_unk, "");
+    strcpy(aps_inv_unk, "");
     for (int pos = 0; pos < sizeof(detailed->inverter.unknown); pos++)
     {
         char buf[3];
         sprintf(buf, "%02X", detailed->inverter.unknown[pos]);
-        strcat(aps_ds3_unk, buf);
+        strcat(aps_inv_unk, buf);
     }
-    Serial.printf("  unknown:      %s\n", aps_ds3_unk);
+    Serial.printf("  unknown:      %s\n", aps_inv_unk);
 
+    sprintf(aps_inv_model, "%02X", detailed->inverter.model);
     Serial.printf("  model:        0x%02X\n", detailed->inverter.model);
 
     strcpy(aps_timestamp, "");
@@ -257,14 +430,14 @@ bool aps_fetch()
 
     Serial.printf("  timestamp:    %s\n", aps_timestamp_mqtt);
 
-    strcpy(aps_ds3_serial, "");
+    strcpy(aps_inv_serial, "");
     for (int pos = 0; pos < sizeof(detailed->inverter.uid); pos++)
     {
         char buf[3];
         sprintf(buf, "%02X", detailed->inverter.uid[pos]);
-        strcat(aps_ds3_serial, buf);
+        strcat(aps_inv_serial, buf);
     }
-    Serial.printf("  uid:          %s\n", aps_ds3_serial);
+    Serial.printf("  uid:          %s\n", aps_inv_serial);
 
     return true;
 }
@@ -289,9 +462,11 @@ bool aps_loop()
             aps_publish_float((char *)"voltage_b", aps_voltage_b);
             aps_publish_string((char *)"ecu_serial", aps_ecu_serial);
             aps_publish_string((char *)"ecu_firmware", aps_ecu_firmware);
-            aps_publish_string((char *)"ds3_serial", aps_ds3_serial);
-            aps_publish_string((char *)"ds3_unknown", aps_ds3_unk);
+            aps_publish_string((char *)"inverter_serial", aps_inv_serial);
+            aps_publish_string((char *)"inverter_unknown", aps_inv_unk);
+            aps_publish_string((char *)"inverter_model", aps_inv_model);
             aps_publish_string((char *)"timestamp", aps_timestamp_mqtt);
+            aps_publish_string((char *)"channel", aps_channel);
         }
         nextTime = time + 5 * 60000;
     }

@@ -1,8 +1,9 @@
 
+#include <Arduino.h>
 #include <FS.h>
 #include <SPIFFS.h>
 
-#include "Config.h"
+#include <Config.h>
 
 t_cfg current_config;
 bool config_valid = false;
@@ -17,7 +18,7 @@ void cfg_save()
 
     if (strlen(current_config.hostname) < 2)
     {
-        strcpy(current_config.hostname, "RF433");
+        strcpy(current_config.hostname, CONFIG_OTANAME);
     }
 
     file.write((uint8_t *)&current_config, sizeof(current_config));
@@ -29,21 +30,19 @@ void cfg_reset()
     memset(&current_config, 0x00, sizeof(current_config));
 
     current_config.magic = CONFIG_MAGIC;
-    strcpy(current_config.hostname, "RF433");
+    strcpy(current_config.hostname, CONFIG_OTANAME);
     strcpy(current_config.mqtt_server, "");
     current_config.mqtt_port = 11883;
     strcpy(current_config.mqtt_user, "");
     strcpy(current_config.mqtt_password, "");
-    strcpy(current_config.mqtt_client, "RF433-NAME");
+    strcpy(current_config.mqtt_client, CONFIG_OTANAME);
     strcpy(current_config.mqtt_filter, "");
     strcpy(current_config.aps_hostname, "");
     strcpy(current_config.aps_mqttpath, "");
     current_config.mqtt_publish = 0;
 
-    current_config.verbose = 0;
-    
-    strcpy(current_config.wifi_ssid, "(not set)");
-    strcpy(current_config.wifi_password, "(not set)");
+    strcpy(current_config.wifi_ssid, "");
+    strcpy(current_config.wifi_password, "");
 }
 
 void cfg_read()
@@ -63,7 +62,28 @@ void cfg_read()
 
         if (current_config.magic != CONFIG_MAGIC)
         {
-            cfg_reset();
+            /* on a minor version change, just keep wifi settings and hostname */
+            if ((current_config.magic & ~0xF) == (CONFIG_MAGIC & ~0xF))
+            {
+                char hostname[32];
+                char wifi_ssid[32];
+                char wifi_password[32];
+
+                strcpy(hostname, current_config.hostname);
+                strcpy(wifi_ssid, current_config.wifi_ssid);
+                strcpy(wifi_password, current_config.wifi_password);
+
+                cfg_reset();
+
+                strcpy(current_config.hostname, hostname);
+                strcpy(current_config.wifi_ssid, wifi_ssid);
+                strcpy(current_config.wifi_password, wifi_password);
+                config_valid = true;
+            }
+            else
+            {
+                cfg_reset();
+            }
             return;
         }
         config_valid = true;

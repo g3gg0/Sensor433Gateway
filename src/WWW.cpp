@@ -1,27 +1,28 @@
-#include <WebServer.h>
-#include <ESP32httpUpdate.h>
-#include "Config.h"
 
-#define xstr(s) str(s)
-#define str(s) #s
 
-WebServer webserver(80);
+#include <WWW.h>
+#include <Config.h>
+#include <Receiver.h>
+#include <OTA.h>
+#include <ESPmDNS.h>
+
+extern std::list<t_map_entry> ReceiverLastReceived;
 extern char wifi_error[];
 extern bool wifi_captive;
-int www_wifi_scanned = -1;
-int www_last_captive = 0;
 
-#define min(a, b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
-#define max(a, b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a > _b ? _a : _b; })
+WebServer webserver(80);
+
+int www_wifi_scanned = -1;
+uint32_t www_last_captive = 0;
 
 void www_setup()
 {
-    webserver.on("/", handle_root);
-    webserver.on("/index.html", handle_index);
-    webserver.on("/set_parm", handle_set_parm);
-    webserver.on("/ota", handle_ota);
-    webserver.on("/reset", handle_reset);
-    webserver.onNotFound(handle_404);
+    webserver.on("/", www_handle_root);
+    webserver.on("/index.html", www_handle_index);
+    webserver.on("/set_parm", www_handle_set_parm);
+    webserver.on("/ota", www_handle_ota);
+    webserver.on("/reset", www_handle_reset);
+    webserver.onNotFound(www_handle_404);
 
     webserver.begin();
     Serial.println("HTTP server started");
@@ -105,7 +106,7 @@ int www_is_captive_active()
     return 0;
 }
 
-void handle_404()
+void www_handle_404()
 {
     www_activity();
 
@@ -123,9 +124,9 @@ void handle_404()
     }
 }
 
-void handle_index()
+void www_handle_index()
 {
-    webserver.send(200, "text/html", SendHTML());
+    webserver.send(200, "text/html", www_send_html());
 }
 
 bool www_loop()
@@ -134,24 +135,24 @@ bool www_loop()
     return false;
 }
 
-void handle_root()
+void www_handle_root()
 {
-    webserver.send(200, "text/html", SendHTML());
+    webserver.send(200, "text/html", www_send_html());
 }
 
-void handle_ota()
+void www_handle_ota()
 {
     ota_setup();
-    webserver.send(200, "text/html", SendHTML());
+    webserver.send(200, "text/html", www_send_html());
 }
 
-void handle_reset()
+void www_handle_reset()
 {
-    webserver.send(200, "text/html", SendHTML());
+    webserver.send(200, "text/html", www_send_html());
     ESP.restart();
 }
 
-void handle_set_parm()
+void www_handle_set_parm()
 {
     if (webserver.arg("http_download") != "" && webserver.arg("http_name") != "")
     {
@@ -167,63 +168,63 @@ void handle_set_parm()
 
         switch (httpCode)
         {
-            case HTTP_CODE_OK:
+        case HTTP_CODE_OK:
+        {
+            int len = http.getSize();
+            const int blocksize = 1024;
+            uint8_t *buffer = (uint8_t *)malloc(blocksize);
+
+            if (!buffer)
             {
-                int len = http.getSize();
-                const int blocksize = 1024;
-                uint8_t *buffer = (uint8_t *)malloc(blocksize);
+                Serial.printf("[HTTP] Failed to alloc %d byte\n", blocksize);
+                return;
+            }
 
-                if (!buffer)
+            WiFiClient *stream = http.getStreamPtr();
+            File file = SPIFFS.open("/" + filename, "w");
+
+            if (!file)
+            {
+                Serial.printf("[HTTP] Failed to open file\n", blocksize);
+                return;
+            }
+
+            int written = 0;
+
+            while (http.connected() && (written < len))
+            {
+                size_t size = stream->available();
+
+                if (size)
                 {
-                    Serial.printf("[HTTP] Failed to alloc %d byte\n", blocksize);
-                    return;
-                }
+                    int c = stream->readBytes(buffer, ((size > blocksize) ? blocksize : size));
 
-                WiFiClient *stream = http.getStreamPtr();
-                File file = SPIFFS.open("/" + filename, "w");
-
-                if (!file)
-                {
-                    Serial.printf("[HTTP] Failed to open file\n", blocksize);
-                    return;
-                }
-
-                int written = 0;
-
-                while (http.connected() && (written < len))
-                {
-                    size_t size = stream->available();
-
-                    if (size)
+                    if (c > 0)
                     {
-                        int c = stream->readBytes(buffer, ((size > blocksize) ? blocksize : size));
-
-                        if (c > 0)
-                        {
-                            file.write(buffer, c);
-                            written += c;
-                        }
-                        else
-                        {
-                            break;
-                        }
+                        file.write(buffer, c);
+                        written += c;
+                    }
+                    else
+                    {
+                        break;
                     }
                 }
-
-                free(buffer);
-                file.close();
-
-                Serial.printf("[HTTP] Finished. Wrote %d byte to %s\n", written, filename.c_str());
-                webserver.send(200, "text/plain", "Downloaded " + url + " and wrote " + written + " byte to " + filename);
-                break;
             }
 
-            default:
-            {
-                Serial.print("[HTTP] unexpected response\n");
-                webserver.send(200, "text/plain", "Unexpected HTTP status code " + httpCode);
-                break;
-            }
+            free(buffer);
+            file.close();
+
+            Serial.printf("[HTTP] Finished. Wrote %d byte to %s\n", written, filename.c_str());
+            webserver.send(200, "text/plain", "Downloaded " + url + " and wrote " + written + " byte to " + filename);
+            break;
+        }
+
+        default:
+        {
+            Serial.print("[HTTP] unexpected response\n");
+            webserver.send(200, "text/plain", "Unexpected HTTP status code " + httpCode);
+            break;
+        }
         }
 
         return;
@@ -235,29 +236,28 @@ void handle_set_parm()
 
         Serial.printf("Update from %s\n", url.c_str());
 
-
         ESPhttpUpdate.rebootOnUpdate(false);
         t_httpUpdate_return ret = ESPhttpUpdate.update(url);
 
         switch (ret)
         {
-            case HTTP_UPDATE_FAILED:
-                webserver.send(200, "text/plain", "HTTP_UPDATE_FAILED while updating from " + url + " " + ESPhttpUpdate.getLastErrorString());
-                Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-                break;
+        case HTTP_UPDATE_FAILED:
+            webserver.send(200, "text/plain", "HTTP_UPDATE_FAILED while updating from " + url + " " + ESPhttpUpdate.getLastErrorString());
+            Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+            break;
 
-            case HTTP_UPDATE_NO_UPDATES:
-                webserver.send(200, "text/plain", "HTTP_UPDATE_NO_UPDATES: Updating from " + url);
-                Serial.println("Update failed: HTTP_UPDATE_NO_UPDATES");
-                break;
+        case HTTP_UPDATE_NO_UPDATES:
+            webserver.send(200, "text/plain", "HTTP_UPDATE_NO_UPDATES: Updating from " + url);
+            Serial.println("Update failed: HTTP_UPDATE_NO_UPDATES");
+            break;
 
-            case HTTP_UPDATE_OK:
-                webserver.send(200, "text/html", "<html><head><meta http-equiv=\"Refresh\" content=\"5; url=/\"/></head><body><h1>Firmware updated. Rebooting...</h1>(will refresh page in 5 seconds)</body></html>");
-                webserver.close();
-                Serial.println("Update successful");
-                delay(500);
-                ESP.restart();
-                return; 
+        case HTTP_UPDATE_OK:
+            webserver.send(200, "text/html", "<html><head><meta http-equiv=\"Refresh\" content=\"5; url=/\"/></head><body><h1>Firmware updated. Rebooting...</h1>(will refresh page in 5 seconds)</body></html>");
+            webserver.close();
+            Serial.println("Update successful");
+            delay(500);
+            ESP.restart();
+            return;
         }
         return;
     }
@@ -284,7 +284,7 @@ void handle_set_parm()
     strncpy(current_config.mqtt_password, webserver.arg("mqtt_password").c_str(), sizeof(current_config.mqtt_password));
     strncpy(current_config.mqtt_client, webserver.arg("mqtt_client").c_str(), sizeof(current_config.mqtt_client));
     strncpy(current_config.mqtt_filter, webserver.arg("mqtt_filter").c_str(), sizeof(current_config.mqtt_filter));
-    
+
     strncpy(current_config.aps_hostname, webserver.arg("aps_hostname").c_str(), sizeof(current_config.aps_hostname));
     strncpy(current_config.aps_mqttpath, webserver.arg("aps_mqttpath").c_str(), sizeof(current_config.aps_mqttpath));
 
@@ -296,8 +296,8 @@ void handle_set_parm()
         Serial.printf("  mqtt_publish:     %d %%\n", current_config.mqtt_publish);
         Serial.printf("  verbose:          %d\n", current_config.verbose);
     }
-  
-    if(webserver.arg("reboot") == "true")
+
+    if (webserver.arg("reboot") == "true")
     {
         webserver.send(200, "text/html", "<html><head><meta http-equiv=\"Refresh\" content=\"5; url=/\"/></head><body><h1>Saved. Rebooting...</h1>(will refresh page in 5 seconds)</body></html>");
         delay(500);
@@ -309,16 +309,11 @@ void handle_set_parm()
     {
         www_wifi_scanned = WiFi.scanNetworks();
     }
-    webserver.send(200, "text/html", SendHTML());
+    webserver.send(200, "text/html", www_send_html());
     www_wifi_scanned = -1;
 }
 
-void handle_NotFound()
-{
-    webserver.send(404, "text/plain", "Not found");
-}
-
-String SendHTML()
+String www_send_html()
 {
     char buf[1024];
 
@@ -327,7 +322,7 @@ String SendHTML()
     String ptr = "<!DOCTYPE html> <html>\n";
     ptr += "<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n";
 
-    sprintf(buf, "<title>433 MHz Gateway</title>\n");
+    sprintf(buf, "<title>" CONFIG_OTANAME " Control</title>\n");
 
     ptr += buf;
     ptr += "<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}\n";
@@ -358,7 +353,7 @@ String SendHTML()
     ptr += "<body>\n";
     ptr += "<script>function addSensor(sensor) { var item = document.getElementById('mqtt_filter'); item.value = item.value.replace(sensor, '').replace('  ', ' '); item.value = (item.value + ' ' + sensor).trim(); }</script>\n";
 
-    sprintf(buf, "<h1>433 MHz Gateway</h1>\n");
+    sprintf(buf, "<h1>" CONFIG_OTANAME "</h1>\n");
     ptr += buf;
 
     sprintf(buf, "<h3>v1." xstr(PIO_SRC_REVNUM) " - " xstr(PIO_SRC_REV) "</h3>\n");
@@ -413,32 +408,32 @@ String SendHTML()
         ptr += buf;                                                                                                                       \
     } while (0)
 
-#define ADD_CONFIG_CHECK5(name, value, fmt, desc, text0, text1, text2, text3, text4)                                                             \
-    do                                                                                                                                    \
-    {                                                                                                                                     \
-        ptr += "<tr><td>" desc ":</td><td><div class=\"check-buttons together\">";                                                        \
-        sprintf(buf, "<input type=\"checkbox\" id=\"" name "_c0\" name=\"" name "_c0\" value=\"1\" %s>\n", (value & 1) ? "checked" : ""); \
-        ptr += buf;                                                                                                                       \
-        sprintf(buf, "<label for=\"" name "_c0\">" text0 "</label>\n");                                                                   \
-        ptr += buf;                                                                                                                       \
-        sprintf(buf, "<input type=\"checkbox\" id=\"" name "_c1\" name=\"" name "_c1\" value=\"1\" %s>\n", (value & 2) ? "checked" : ""); \
-        ptr += buf;                                                                                                                       \
-        sprintf(buf, "<label for=\"" name "_c1\">" text1 "</label>\n");                                                                   \
-        ptr += buf;                                                                                                                       \
-        sprintf(buf, "<input type=\"checkbox\" id=\"" name "_c2\" name=\"" name "_c2\" value=\"1\" %s>\n", (value & 4) ? "checked" : ""); \
-        ptr += buf;                                                                                                                       \
-        sprintf(buf, "<label for=\"" name "_c2\">" text2 "</label>\n");                                                                   \
-        ptr += buf;                                                                                                                       \
-        sprintf(buf, "<input type=\"checkbox\" id=\"" name "_c3\" name=\"" name "_c3\" value=\"1\" %s>\n", (value & 8) ? "checked" : ""); \
-        ptr += buf;                                                                                                                       \
-        sprintf(buf, "<label for=\"" name "_c3\">" text3 "</label>\n");                                                                   \
-        ptr += buf;                                                                                                                       \
-        sprintf(buf, "<input type=\"checkbox\" id=\"" name "_c4\" name=\"" name "_c4\" value=\"1\" %s>\n", (value & 16) ? "checked" : "");\
-        ptr += buf;                                                                                                                       \
-        sprintf(buf, "<label for=\"" name "_c4\">" text4 "</label>\n");                                                                   \
-        ptr += buf;                                                                                                                       \
-        sprintf(buf, "</div></td></tr>\n");                                                                                               \
-        ptr += buf;                                                                                                                       \
+#define ADD_CONFIG_CHECK5(name, value, fmt, desc, text0, text1, text2, text3, text4)                                                       \
+    do                                                                                                                                     \
+    {                                                                                                                                      \
+        ptr += "<tr><td>" desc ":</td><td><div class=\"check-buttons together\">";                                                         \
+        sprintf(buf, "<input type=\"checkbox\" id=\"" name "_c0\" name=\"" name "_c0\" value=\"1\" %s>\n", (value & 1) ? "checked" : "");  \
+        ptr += buf;                                                                                                                        \
+        sprintf(buf, "<label for=\"" name "_c0\">" text0 "</label>\n");                                                                    \
+        ptr += buf;                                                                                                                        \
+        sprintf(buf, "<input type=\"checkbox\" id=\"" name "_c1\" name=\"" name "_c1\" value=\"1\" %s>\n", (value & 2) ? "checked" : "");  \
+        ptr += buf;                                                                                                                        \
+        sprintf(buf, "<label for=\"" name "_c1\">" text1 "</label>\n");                                                                    \
+        ptr += buf;                                                                                                                        \
+        sprintf(buf, "<input type=\"checkbox\" id=\"" name "_c2\" name=\"" name "_c2\" value=\"1\" %s>\n", (value & 4) ? "checked" : "");  \
+        ptr += buf;                                                                                                                        \
+        sprintf(buf, "<label for=\"" name "_c2\">" text2 "</label>\n");                                                                    \
+        ptr += buf;                                                                                                                        \
+        sprintf(buf, "<input type=\"checkbox\" id=\"" name "_c3\" name=\"" name "_c3\" value=\"1\" %s>\n", (value & 8) ? "checked" : "");  \
+        ptr += buf;                                                                                                                        \
+        sprintf(buf, "<label for=\"" name "_c3\">" text3 "</label>\n");                                                                    \
+        ptr += buf;                                                                                                                        \
+        sprintf(buf, "<input type=\"checkbox\" id=\"" name "_c4\" name=\"" name "_c4\" value=\"1\" %s>\n", (value & 16) ? "checked" : ""); \
+        ptr += buf;                                                                                                                        \
+        sprintf(buf, "<label for=\"" name "_c4\">" text4 "</label>\n");                                                                    \
+        ptr += buf;                                                                                                                        \
+        sprintf(buf, "</div></td></tr>\n");                                                                                                \
+        ptr += buf;                                                                                                                        \
     } while (0)
 
 #define ADD_CONFIG_COLOR(name, value, fmt, desc)                                                                                       \
@@ -498,10 +493,8 @@ String SendHTML()
     ADD_CONFIG("aps_hostname", current_config.aps_hostname, "%s", "APS ECU address");
     ADD_CONFIG("aps_mqttpath", current_config.aps_mqttpath, "%s", "MQTT path for APS ECU reports");
 
-
     ptr += "<td></td><td><input type=\"submit\" value=\"Save\"><button type=\"submit\" name=\"reboot\" value=\"true\">Save &amp; Reboot</button></td></table></form>\n";
 
-    
     ptr += "<br><br><h2>Captured signals</h2>\n<table>";
     ptr += "<tr><td align=\"left\"><tt>";
     ptr += "MQTT ID";
@@ -561,12 +554,11 @@ String SendHTML()
         ptr += rssi;
         ptr += " dBm</tt></td></tr>";
 
-        free((void*)tmp_str);
+        free((void *)tmp_str);
     }
     ptr += "</table>";
 
     ptr += "</body>\n";
     ptr += "</html>\n";
-
     return ptr;
 }

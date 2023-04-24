@@ -1,18 +1,23 @@
 
 #include <WiFi.h>
-#include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <FS.h>
 #include <SPIFFS.h>
-#include <rtl_433_ESP.h>
-#include <ArduinoJson.h>
 #include <ArduinoLog.h>
 
 #include <esp_task_wdt.h>
 #define WDT_TIMEOUT 180
 
-#include "Config.h"
+#include <LED.h>
+#include <NTP.h>
+#include <OTA.h>
+#include <MQTT.h>
+#include <APS_ECU.h>
+#include <Config.h>
+#include <Receiver.h>
+#include <WWW.h>
+#include <WiFi_Handler.h>
 
 int loopCount = 0;
 
@@ -22,7 +27,6 @@ float main_duration_max = 0;
 float main_duration_min = 1000000;
 
 extern bool config_valid;
-
 
 void setup()
 {
@@ -59,7 +63,7 @@ void setup()
     Serial.printf("[i]   Setup Webserver\n");
     www_setup();
     Serial.printf("[i]   Setup Time\n");
-    time_setup();
+    ntp_setup();
     Serial.printf("[i]   Setup MQTT\n");
     mqtt_setup();
     Serial.printf("[i]   Setup rtl433\n");
@@ -70,7 +74,6 @@ void setup()
     Serial.println("Setup done");
 }
 
-
 void loop()
 {
     bool hasWork = false;
@@ -80,7 +83,7 @@ void loop()
     hasWork |= led_loop();
     hasWork |= wifi_loop();
     hasWork |= www_loop();
-    hasWork |= time_loop();
+    hasWork |= ntp_loop();
     hasWork |= mqtt_loop();
     hasWork |= ota_loop();
     hasWork |= rcv_loop();
@@ -102,7 +105,7 @@ void loop()
 
     loopCount++;
 
-    if(!hasWork)
+    if (!hasWork)
     {
         delay(100);
     }

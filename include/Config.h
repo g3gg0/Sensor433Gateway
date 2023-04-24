@@ -1,8 +1,7 @@
-#ifndef __CONFIG_H__
-#define __CONFIG_H__
+#pragma once
 
-#define CONFIG_SOFTAPNAME  "esp32-config"
-#define CONFIG_OTANAME     "Sensor433Gateway"
+#define CONFIG_SOFTAPNAME "esp32-config"
+#define CONFIG_OTANAME "Sensor433Gateway"
 
 #define CONFIG_MAGIC 0xE1AAFF02
 typedef struct
@@ -23,8 +22,7 @@ typedef struct
     char aps_mqttpath[64];
 } t_cfg;
 
-
 extern t_cfg current_config;
 
-
-#endif
+void cfg_read();
+void cfg_save();
