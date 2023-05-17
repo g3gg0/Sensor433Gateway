@@ -52,6 +52,8 @@ struct s_ha_entity
     float min;
     /* used by: number */
     float max;
+    /* used by: number */
+    const char *mode;
     /* icon */
     const char *ic;
     /* entity_category */

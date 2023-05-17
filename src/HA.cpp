@@ -104,7 +104,7 @@ void ha_addint(char *json_str, const char *name, int value, bool last = false)
 
 void ha_publish()
 {
-    char *json_str = (char *)malloc(512);
+    char *json_str = (char *)malloc(1024);
     char mqtt_path[128];
     char uniq_id[128];
 
@@ -114,7 +114,7 @@ void ha_publish()
 
     for (int pos = 0; pos < ha_info.entitiy_count; pos++)
     {
-        const char *type = "undefined";
+        const char *type = NULL;
 
         switch (ha_info.entities[pos].type)
         {
@@ -148,7 +148,12 @@ void ha_publish()
             break;
         default:
             Serial.printf("[HA] last one\n");
-            return;
+            break;
+        }
+
+        if (!type)
+        {
+            break;
         }
 
         sprintf(uniq_id, "%s_%s", ha_info.id, ha_info.entities[pos].id);
@@ -164,6 +169,7 @@ void ha_publish()
         ha_addstr(json_str, "dev_cla", ha_info.entities[pos].dev_class);
         ha_addstr(json_str, "stat_cla", ha_info.entities[pos].state_class);
         ha_addstr(json_str, "ic", ha_info.entities[pos].ic);
+        ha_addstr(json_str, "mode", ha_info.entities[pos].mode);
         ha_addstr(json_str, "ent_cat", ha_info.entities[pos].ent_cat);
         ha_addmqtt(json_str, "cmd_t", ha_info.entities[pos].cmd_t, &ha_info.entities[pos]);
         ha_addmqtt(json_str, "stat_t", ha_info.entities[pos].stat_t, &ha_info.entities[pos]);
@@ -175,6 +181,17 @@ void ha_publish()
         ha_addmqtt(json_str, "val_tpl", ha_info.entities[pos].val_tpl, &ha_info.entities[pos]);
         ha_addstrarray(json_str, "options", ha_info.entities[pos].options);
         ha_addstr(json_str, "unit_of_meas", ha_info.entities[pos].unit_of_meas);
+
+        switch (ha_info.entities[pos].type)
+        {
+        case ha_number:
+            ha_addint(json_str, "min", ha_info.entities[pos].min);
+            ha_addint(json_str, "max", ha_info.entities[pos].max);
+            break;
+        default:
+            break;
+        }
+
         strcat(json_str, "\"dev\": {");
         ha_addstr(json_str, "name", ha_info.name);
         ha_addstr(json_str, "ids", ha_info.id);
